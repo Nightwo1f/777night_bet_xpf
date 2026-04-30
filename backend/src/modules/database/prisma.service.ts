@@ -61,6 +61,28 @@ export class PrismaService
       CREATE INDEX IF NOT EXISTS "Transaction_userId_createdAt_idx"
       ON "Transaction" ("userId", "createdAt");
     `);
+
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "GameRound" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "userId" INTEGER NOT NULL,
+        "game" TEXT NOT NULL,
+        "stake" INTEGER NOT NULL,
+        "choice" INTEGER NOT NULL,
+        "drawn" INTEGER NOT NULL,
+        "won" BOOLEAN NOT NULL,
+        "delta" INTEGER NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "GameRound_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User" ("id")
+          ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+    `);
+
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "GameRound_userId_createdAt_idx"
+      ON "GameRound" ("userId", "createdAt");
+    `);
   }
 
   private async seedDemoData() {

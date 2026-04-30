@@ -26,6 +26,17 @@ type Wallet = {
   transactions: Transaction[];
 };
 
+type GameRound = {
+  id: number;
+  game: string;
+  stake: number;
+  choice: number;
+  drawn: number;
+  won: boolean;
+  delta: number;
+  createdAt: string;
+};
+
 type AdminOverview = {
   stats: {
     users: number;
@@ -58,6 +69,7 @@ export default function Home() {
   const [password, setPassword] = useState("123456");
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [adminOverview, setAdminOverview] = useState<AdminOverview | null>(null);
+  const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
   const [stake, setStake] = useState(25);
   const [choice, setChoice] = useState(7);
   const [lastResult, setLastResult] = useState<RoundResult | null>(null);
@@ -90,6 +102,7 @@ export default function Home() {
       saveSession(payload.access_token, payload.user.email);
       await loadWallet(payload.access_token);
       await loadAdminOverview(payload.access_token);
+      await loadRoundHistory(payload.access_token);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -139,6 +152,24 @@ export default function Home() {
     setAdminOverview(await response.json());
   }
 
+  async function loadRoundHistory(authToken = token) {
+    if (!authToken) return;
+
+    const response = await fetch(`${API_URL}/games/night-dice/history`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearSession();
+      }
+
+      throw new Error("Nao foi possivel carregar o historico de partidas");
+    }
+
+    setRoundHistory(await response.json());
+  }
+
   async function playRound() {
     if (!canPlay || !token) return;
 
@@ -165,6 +196,7 @@ export default function Home() {
       setLastResult(result);
       await loadWallet();
       await loadAdminOverview();
+      await loadRoundHistory();
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -190,6 +222,7 @@ export default function Home() {
     setUserEmail(null);
     setWallet(null);
     setAdminOverview(null);
+    setRoundHistory([]);
     setLastResult(null);
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
   }
@@ -209,6 +242,7 @@ export default function Home() {
       void Promise.all([
         loadWallet(parsedSession.token),
         loadAdminOverview(parsedSession.token),
+        loadRoundHistory(parsedSession.token),
       ]).finally(() => setIsLoading(false));
     } catch {
       clearSession();
@@ -527,6 +561,52 @@ export default function Home() {
               ))}
             </div>
           </section>
+
+          {token && (
+            <section className="rounded-lg border border-[#2d3135] bg-[#181c20] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">Historico</h2>
+                <button
+                  className="rounded-md border border-[#3b4248] px-3 py-1 text-xs font-semibold text-[#c8ced5] hover:border-[#e8bc5c]"
+                  onClick={() => void loadRoundHistory()}
+                  type="button"
+                >
+                  Atualizar
+                </button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {roundHistory.length === 0 && (
+                  <p className="text-sm text-[#9fa7af]">Nenhuma rodada registrada.</p>
+                )}
+
+                {roundHistory.map((round) => (
+                  <article
+                    className="rounded-lg border border-[#30363b] bg-[#20252a] p-3"
+                    key={round.id}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold">
+                        Escolha {round.choice}, saiu {round.drawn}
+                      </p>
+                      <span
+                        className={
+                          round.won
+                            ? "text-sm font-bold text-[#78df9d]"
+                            : "text-sm font-bold text-[#ff8f82]"
+                        }
+                      >
+                        {round.delta >= 0 ? "+" : ""}
+                        {round.delta.toLocaleString("pt-BR")} VC
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[#9fa7af]">
+                      Aposta {round.stake.toLocaleString("pt-BR")} VC
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="rounded-lg border border-[#4a3520] bg-[#211b14] p-5">
             <h2 className="text-lg font-bold text-[#f0cb74]">Ambiente demo</h2>

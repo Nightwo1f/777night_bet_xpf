@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 
 @Injectable()
 export class GamesService {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly walletService: WalletService,
+  ) {}
 
   async playNightDice(input: { userId: number; stake: number; choice: number }) {
     const stake = Number(input.stake);
@@ -32,8 +36,21 @@ export class GamesService {
       description: won ? 'Night Dice win' : 'Night Dice loss',
     });
 
+    const round = await this.prisma.gameRound.create({
+      data: {
+        userId: input.userId,
+        game: 'night-dice',
+        stake,
+        choice,
+        drawn,
+        won,
+        delta: amount,
+      },
+    });
+
     return {
       game: 'night-dice',
+      roundId: round.id,
       stake,
       choice,
       drawn,
@@ -42,5 +59,13 @@ export class GamesService {
       balance: transaction.balanceAfter,
       transaction,
     };
+  }
+
+  getHistory(userId: number) {
+    return this.prisma.gameRound.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
   }
 }

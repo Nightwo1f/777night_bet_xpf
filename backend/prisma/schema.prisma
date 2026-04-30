@@ -14,6 +14,7 @@ model User {
   createdAt    DateTime      @default(now())
   wallet       Wallet?
   transactions Transaction[]
+  gameRounds   GameRound[]
 }
 
 model Wallet {
@@ -34,6 +35,21 @@ model Transaction {
   description  String
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model GameRound {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  game      String
+  stake     Int
+  choice    Int
+  drawn     Int
+  won       Boolean
+  delta     Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
 }
