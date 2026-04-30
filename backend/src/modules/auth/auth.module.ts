@@ -5,12 +5,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from '../users/users.module';
 import { AdminGuard } from './admin.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { getJwtSecret } from '../../config/jwt';
 
 @Module({
   imports: [
     UsersModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'dev-only-secret',
+      secret: getJwtSecret(),
       signOptions: { expiresIn: '1h' },
     }),
   ],

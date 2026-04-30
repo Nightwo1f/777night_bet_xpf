@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
+import { getJwtSecret } from '../../config/jwt';
 
 type RequestWithUser = Request & {
   user?: {
@@ -33,7 +34,7 @@ export class JwtAuthGuard implements CanActivate {
         email: string;
         role: string;
       }>(token, {
-        secret: process.env.JWT_SECRET ?? 'dev-only-secret',
+        secret: getJwtSecret(),
       });
       return true;
     } catch {
