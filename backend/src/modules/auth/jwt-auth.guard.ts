@@ -11,6 +11,7 @@ type RequestWithUser = Request & {
   user?: {
     sub: number;
     email: string;
+    role: string;
   };
 };
 
@@ -30,6 +31,7 @@ export class JwtAuthGuard implements CanActivate {
       request.user = await this.jwtService.verifyAsync<{
         sub: number;
         email: string;
+        role: string;
       }>(token, {
         secret: process.env.JWT_SECRET ?? 'dev-only-secret',
       });

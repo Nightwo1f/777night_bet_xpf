@@ -25,9 +25,16 @@ export class PrismaService
         "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "email" TEXT NOT NULL UNIQUE,
         "passwordHash" TEXT NOT NULL,
+        "role" TEXT NOT NULL DEFAULT 'PLAYER',
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    await this.addColumnIfMissing(
+      'User',
+      'role',
+      `ALTER TABLE "User" ADD COLUMN "role" TEXT NOT NULL DEFAULT 'PLAYER';`,
+    );
 
     await this.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "Wallet" (
@@ -88,10 +95,13 @@ export class PrismaService
   private async seedDemoData() {
     const user = await this.user.upsert({
       where: { email: 'test@test.com' },
-      update: {},
+      update: {
+        role: 'ADMIN',
+      },
       create: {
         email: 'test@test.com',
         passwordHash: demoPasswordHash,
+        role: 'ADMIN',
         wallet: {
           create: {
             balance: 1000,
@@ -124,6 +134,16 @@ export class PrismaService
           description: 'Creditos iniciais demo',
         },
       });
+    }
+  }
+
+  private async addColumnIfMissing(table: string, column: string, sql: string) {
+    const columns = await this.$queryRawUnsafe<Array<{ name: string }>>(
+      `PRAGMA table_info("${table}")`,
+    );
+
+    if (!columns.some((entry) => entry.name === column)) {
+      await this.$executeRawUnsafe(sql);
     }
   }
 }

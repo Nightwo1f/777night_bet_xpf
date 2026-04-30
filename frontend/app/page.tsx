@@ -60,10 +60,12 @@ type RoundResult = {
 };
 
 type AuthMode = "login" | "register";
+type UserRole = "ADMIN" | "PLAYER";
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("test@test.com");
   const [password, setPassword] = useState("123456");
@@ -79,6 +81,7 @@ export default function Home() {
 
   const balance = wallet?.balance ?? 0;
   const canPlay = Boolean(token) && !isLoading && !isPlaying && stake > 0 && stake <= balance;
+  const isAdmin = userRole === "ADMIN";
   const potentialReturn = useMemo(() => stake * 2, [stake]);
 
   async function submitAuth(event?: React.FormEvent<HTMLFormElement>) {
@@ -99,9 +102,11 @@ export default function Home() {
       }
 
       const payload = await response.json();
-      saveSession(payload.access_token, payload.user.email);
+      saveSession(payload.access_token, payload.user.email, payload.user.role);
       await loadWallet(payload.access_token);
-      await loadAdminOverview(payload.access_token);
+      if (payload.user.role === "ADMIN") {
+        await loadAdminOverview(payload.access_token, true);
+      }
       await loadRoundHistory(payload.access_token);
     } catch (requestError) {
       setError(
@@ -134,8 +139,8 @@ export default function Home() {
     setWallet(await response.json());
   }
 
-  async function loadAdminOverview(authToken = token) {
-    if (!authToken) return;
+  async function loadAdminOverview(authToken = token, hasAdminAccess = isAdmin) {
+    if (!authToken || !hasAdminAccess) return;
 
     const response = await fetch(`${API_URL}/admin/overview`, {
       headers: { Authorization: `Bearer ${authToken}` },
@@ -144,6 +149,11 @@ export default function Home() {
     if (!response.ok) {
       if (response.status === 401) {
         clearSession();
+      }
+
+      if (response.status === 403) {
+        setAdminOverview(null);
+        return;
       }
 
       throw new Error("Nao foi possivel carregar o painel admin");
@@ -195,7 +205,9 @@ export default function Home() {
 
       setLastResult(result);
       await loadWallet();
-      await loadAdminOverview();
+      if (isAdmin) {
+        await loadAdminOverview();
+      }
       await loadRoundHistory();
     } catch (requestError) {
       setError(
@@ -208,18 +220,20 @@ export default function Home() {
     }
   }
 
-  function saveSession(accessToken: string, emailAddress: string) {
+  function saveSession(accessToken: string, emailAddress: string, role: UserRole) {
     setToken(accessToken);
     setUserEmail(emailAddress);
+    setUserRole(role);
     window.localStorage.setItem(
       SESSION_STORAGE_KEY,
-      JSON.stringify({ token: accessToken, email: emailAddress }),
+      JSON.stringify({ token: accessToken, email: emailAddress, role }),
     );
   }
 
   function clearSession() {
     setToken(null);
     setUserEmail(null);
+    setUserRole(null);
     setWallet(null);
     setAdminOverview(null);
     setRoundHistory([]);
@@ -239,9 +253,12 @@ export default function Home() {
       const parsedSession = JSON.parse(storedSession);
       setToken(parsedSession.token);
       setUserEmail(parsedSession.email);
+      setUserRole(parsedSession.role);
       void Promise.all([
         loadWallet(parsedSession.token),
-        loadAdminOverview(parsedSession.token),
+        parsedSession.role === "ADMIN"
+          ? loadAdminOverview(parsedSession.token, true)
+          : Promise.resolve(),
         loadRoundHistory(parsedSession.token),
       ]).finally(() => setIsLoading(false));
     } catch {
@@ -262,7 +279,9 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-3">
             <div className="rounded-md border border-[#3b4248] bg-[#20252a] px-4 py-2 text-right">
-              <p className="text-xs text-[#9fa7af]">{userEmail ?? "Sem sessao"}</p>
+              <p className="text-xs text-[#9fa7af]">
+                {userEmail ? `${userEmail} (${userRole})` : "Sem sessao"}
+              </p>
               <p className="text-xl font-semibold">
                 {isLoading ? "..." : balance.toLocaleString("pt-BR")} VC
               </p>
@@ -462,7 +481,7 @@ export default function Home() {
         </section>
 
         <aside className="space-y-5">
-          {adminOverview && (
+          {isAdmin && adminOverview && (
             <section className="rounded-lg border border-[#2d3135] bg-[#181c20] p-5">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-bold">Admin</h2>

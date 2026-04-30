@@ -11,6 +11,7 @@ model User {
   id           Int           @id @default(autoincrement())
   email        String        @unique
   passwordHash String
+  role         String        @default("PLAYER")
   createdAt    DateTime      @default(now())
   wallet       Wallet?
   transactions Transaction[]

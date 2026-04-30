@@ -34,7 +34,7 @@ export class AuthService {
       passwordHash,
     });
 
-    return this.createSession(user.id, user.email);
+    return this.createSession(user.id, user.email, user.role);
   }
 
   async login(email: string, password: string) {
@@ -51,13 +51,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.createSession(user.id, user.email);
+    return this.createSession(user.id, user.email, user.role);
   }
 
-  private createSession(userId: number, email: string) {
+  private createSession(userId: number, email: string, role: string) {
     const token = this.jwtService.sign({
       sub: userId,
       email,
+      role,
     });
 
     return {
@@ -65,6 +66,7 @@ export class AuthService {
       user: {
         id: userId,
         email,
+        role,
       },
     };
   }
