@@ -26,6 +26,21 @@ type Wallet = {
   transactions: Transaction[];
 };
 
+type AdminOverview = {
+  stats: {
+    users: number;
+    totalBalance: number;
+    totalTransactions: number;
+  };
+  users: Array<{
+    id: number;
+    email: string;
+    createdAt: string;
+    balance: number;
+    transactions: Transaction[];
+  }>;
+};
+
 type RoundResult = {
   drawn: number;
   won: boolean;
@@ -42,6 +57,7 @@ export default function Home() {
   const [email, setEmail] = useState("test@test.com");
   const [password, setPassword] = useState("123456");
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [adminOverview, setAdminOverview] = useState<AdminOverview | null>(null);
   const [stake, setStake] = useState(25);
   const [choice, setChoice] = useState(7);
   const [lastResult, setLastResult] = useState<RoundResult | null>(null);
@@ -73,6 +89,7 @@ export default function Home() {
       const payload = await response.json();
       saveSession(payload.access_token, payload.user.email);
       await loadWallet(payload.access_token);
+      await loadAdminOverview(payload.access_token);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -104,6 +121,24 @@ export default function Home() {
     setWallet(await response.json());
   }
 
+  async function loadAdminOverview(authToken = token) {
+    if (!authToken) return;
+
+    const response = await fetch(`${API_URL}/admin/overview`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearSession();
+      }
+
+      throw new Error("Nao foi possivel carregar o painel admin");
+    }
+
+    setAdminOverview(await response.json());
+  }
+
   async function playRound() {
     if (!canPlay || !token) return;
 
@@ -129,6 +164,7 @@ export default function Home() {
 
       setLastResult(result);
       await loadWallet();
+      await loadAdminOverview();
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -153,6 +189,7 @@ export default function Home() {
     setToken(null);
     setUserEmail(null);
     setWallet(null);
+    setAdminOverview(null);
     setLastResult(null);
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
   }
@@ -169,7 +206,10 @@ export default function Home() {
       const parsedSession = JSON.parse(storedSession);
       setToken(parsedSession.token);
       setUserEmail(parsedSession.email);
-      void loadWallet(parsedSession.token).finally(() => setIsLoading(false));
+      void Promise.all([
+        loadWallet(parsedSession.token),
+        loadAdminOverview(parsedSession.token),
+      ]).finally(() => setIsLoading(false));
     } catch {
       clearSession();
       setIsLoading(false);
@@ -388,6 +428,57 @@ export default function Home() {
         </section>
 
         <aside className="space-y-5">
+          {adminOverview && (
+            <section className="rounded-lg border border-[#2d3135] bg-[#181c20] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">Admin</h2>
+                <button
+                  className="rounded-md border border-[#3b4248] px-3 py-1 text-xs font-semibold text-[#c8ced5] hover:border-[#e8bc5c]"
+                  onClick={() => void loadAdminOverview()}
+                  type="button"
+                >
+                  Atualizar
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-md bg-[#20252a] p-3">
+                  <p className="text-xs text-[#9fa7af]">Users</p>
+                  <p className="text-lg font-bold">{adminOverview.stats.users}</p>
+                </div>
+                <div className="rounded-md bg-[#20252a] p-3">
+                  <p className="text-xs text-[#9fa7af]">Saldo</p>
+                  <p className="text-lg font-bold">
+                    {adminOverview.stats.totalBalance.toLocaleString("pt-BR")}
+                  </p>
+                </div>
+                <div className="rounded-md bg-[#20252a] p-3">
+                  <p className="text-xs text-[#9fa7af]">Tx</p>
+                  <p className="text-lg font-bold">{adminOverview.stats.totalTransactions}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {adminOverview.users.map((user) => (
+                  <article
+                    className="rounded-lg border border-[#30363b] bg-[#20252a] p-3"
+                    key={user.id}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold">{user.email}</p>
+                      <span className="text-sm font-bold text-[#e8bc5c]">
+                        {user.balance.toLocaleString("pt-BR")} VC
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[#9fa7af]">
+                      {user.transactions.length} transacoes recentes
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="rounded-lg border border-[#2d3135] bg-[#181c20] p-5">
             <h2 className="text-lg font-bold">Lobby</h2>
             <div className="mt-4 space-y-3">
