@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const SESSION_STORAGE_KEY = "777night.session";
 
 const games = [
   { name: "Night Dice", multiplier: "2.0x", status: "Ao vivo" },
@@ -32,9 +33,14 @@ type RoundResult = {
   balance: number;
 };
 
+type AuthMode = "login" | "register";
+
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [email, setEmail] = useState("test@test.com");
+  const [password, setPassword] = useState("123456");
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [stake, setStake] = useState(25);
   const [choice, setChoice] = useState(7);
@@ -47,30 +53,31 @@ export default function Home() {
   const canPlay = Boolean(token) && !isLoading && !isPlaying && stake > 0 && stake <= balance;
   const potentialReturn = useMemo(() => stake * 2, [stake]);
 
-  async function signInDemo() {
+  async function submitAuth(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch(`${API_URL}/auth/${authMode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "test@test.com", password: "123456" }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
-        throw new Error("Nao foi possivel entrar na demo");
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? "Nao foi possivel autenticar");
       }
 
       const payload = await response.json();
-      setToken(payload.access_token);
-      setUserEmail(payload.user.email);
+      saveSession(payload.access_token, payload.user.email);
       await loadWallet(payload.access_token);
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Erro inesperado ao entrar na demo",
+          : "Erro inesperado ao autenticar",
       );
     } finally {
       setIsLoading(false);
@@ -87,6 +94,10 @@ export default function Home() {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        clearSession();
+      }
+
       throw new Error("Nao foi possivel carregar a carteira");
     }
 
@@ -129,8 +140,40 @@ export default function Home() {
     }
   }
 
+  function saveSession(accessToken: string, emailAddress: string) {
+    setToken(accessToken);
+    setUserEmail(emailAddress);
+    window.localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({ token: accessToken, email: emailAddress }),
+    );
+  }
+
+  function clearSession() {
+    setToken(null);
+    setUserEmail(null);
+    setWallet(null);
+    setLastResult(null);
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+
   useEffect(() => {
-    void signInDemo();
+    const storedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+
+    if (!storedSession) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const parsedSession = JSON.parse(storedSession);
+      setToken(parsedSession.token);
+      setUserEmail(parsedSession.email);
+      void loadWallet(parsedSession.token).finally(() => setIsLoading(false));
+    } catch {
+      clearSession();
+      setIsLoading(false);
+    }
   }, []);
 
   return (
@@ -143,16 +186,102 @@ export default function Home() {
             </p>
             <h1 className="text-2xl font-bold">777 Night</h1>
           </div>
-          <div className="rounded-md border border-[#3b4248] bg-[#20252a] px-4 py-2 text-right">
-            <p className="text-xs text-[#9fa7af]">{userEmail ?? "Conectando demo"}</p>
-            <p className="text-xl font-semibold">
-              {isLoading ? "..." : balance.toLocaleString("pt-BR")} VC
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="rounded-md border border-[#3b4248] bg-[#20252a] px-4 py-2 text-right">
+              <p className="text-xs text-[#9fa7af]">{userEmail ?? "Sem sessao"}</p>
+              <p className="text-xl font-semibold">
+                {isLoading ? "..." : balance.toLocaleString("pt-BR")} VC
+              </p>
+            </div>
+            {token && (
+              <button
+                className="h-11 rounded-md border border-[#3b4248] px-3 text-sm font-semibold text-[#c8ced5] hover:border-[#e8bc5c]"
+                onClick={clearSession}
+                type="button"
+              >
+                Sair
+              </button>
+            )}
           </div>
         </div>
       </section>
 
       <div className="mx-auto grid w-full max-w-6xl gap-5 px-5 py-6 lg:grid-cols-[1.3fr_0.7fr]">
+        {!token && (
+          <section className="rounded-lg border border-[#2d3135] bg-[#181c20] p-5 lg:col-span-2">
+            <div className="grid gap-6 md:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <p className="text-sm text-[#9fa7af]">Conta do jogador</p>
+                <h2 className="mt-1 text-3xl font-bold">
+                  {authMode === "login" ? "Entrar" : "Criar conta"}
+                </h2>
+                <p className="mt-3 max-w-md text-sm leading-6 text-[#c8ced5]">
+                  Cada conta recebe uma carteira propria com 1000 VC iniciais para jogar em
+                  ambiente virtual.
+                </p>
+              </div>
+
+              <form className="space-y-4" onSubmit={submitAuth}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    className={`h-11 rounded-md border text-sm font-bold ${
+                      authMode === "login"
+                        ? "border-[#e8bc5c] bg-[#e8bc5c] text-[#17130b]"
+                        : "border-[#3b4248] bg-[#20252a] text-[#c8ced5]"
+                    }`}
+                    onClick={() => setAuthMode("login")}
+                    type="button"
+                  >
+                    Entrar
+                  </button>
+                  <button
+                    className={`h-11 rounded-md border text-sm font-bold ${
+                      authMode === "register"
+                        ? "border-[#e8bc5c] bg-[#e8bc5c] text-[#17130b]"
+                        : "border-[#3b4248] bg-[#20252a] text-[#c8ced5]"
+                    }`}
+                    onClick={() => setAuthMode("register")}
+                    type="button"
+                  >
+                    Criar conta
+                  </button>
+                </div>
+
+                <label className="block text-sm font-medium text-[#c8ced5]" htmlFor="email">
+                  Email
+                  <input
+                    id="email"
+                    className="mt-2 h-12 w-full rounded-md border border-[#3b4248] bg-[#111315] px-3 text-base font-semibold outline-none"
+                    onChange={(event) => setEmail(event.target.value)}
+                    type="email"
+                    value={email}
+                  />
+                </label>
+
+                <label className="block text-sm font-medium text-[#c8ced5]" htmlFor="password">
+                  Senha
+                  <input
+                    id="password"
+                    className="mt-2 h-12 w-full rounded-md border border-[#3b4248] bg-[#111315] px-3 text-base font-semibold outline-none"
+                    minLength={6}
+                    onChange={(event) => setPassword(event.target.value)}
+                    type="password"
+                    value={password}
+                  />
+                </label>
+
+                <button
+                  className="h-12 w-full rounded-md bg-[#e8bc5c] px-5 font-bold text-[#17130b] transition hover:bg-[#f0cb74] disabled:cursor-not-allowed disabled:bg-[#575c61] disabled:text-[#c8ced5]"
+                  disabled={isLoading}
+                  type="submit"
+                >
+                  {isLoading ? "Aguarde..." : authMode === "login" ? "Entrar" : "Criar conta"}
+                </button>
+              </form>
+            </div>
+          </section>
+        )}
+
         <section className="rounded-lg border border-[#2d3135] bg-[#181c20] p-5">
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -170,10 +299,10 @@ export default function Home() {
                 <span>{error}</span>
                 <button
                   className="rounded-md bg-[#ffb2a8] px-3 py-1 font-semibold text-[#2c1714]"
-                  onClick={signInDemo}
+                  onClick={() => void submitAuth()}
                   type="button"
                 >
-                  Reconectar
+                  Tentar de novo
                 </button>
               </div>
             </div>
@@ -241,7 +370,7 @@ export default function Home() {
             onClick={playRound}
             type="button"
           >
-            {isPlaying ? "Processando..." : token ? "Jogar rodada" : "Conectando demo"}
+            {isPlaying ? "Processando..." : token ? "Jogar rodada" : "Entre para jogar"}
           </button>
 
           {lastResult && (
