@@ -5,7 +5,7 @@ import { WalletService } from '../wallet/wallet.service';
 export class GamesService {
   constructor(private readonly walletService: WalletService) {}
 
-  playNightDice(input: { userId: number; stake: number; choice: number }) {
+  async playNightDice(input: { userId: number; stake: number; choice: number }) {
     const stake = Number(input.stake);
     const choice = Number(input.choice);
 
@@ -17,7 +17,7 @@ export class GamesService {
       throw new BadRequestException('Stake must be greater than zero');
     }
 
-    if (stake > this.walletService.getBalance(input.userId)) {
+    if (stake > (await this.walletService.getBalance(input.userId))) {
       throw new BadRequestException('Insufficient balance');
     }
 
@@ -25,7 +25,7 @@ export class GamesService {
     const won = drawn === choice;
     const amount = won ? stake * 2 : -stake;
 
-    const transaction = this.walletService.applyTransaction({
+    const transaction = await this.walletService.applyTransaction({
       userId: input.userId,
       amount,
       type: won ? 'win' : 'loss',

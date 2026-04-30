@@ -1,51 +1,33 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
 
 type TransactionType = 'credit' | 'debit' | 'win' | 'loss';
 
-export type WalletTransaction = {
-  id: number;
-  userId: number;
-  amount: number;
-  balanceAfter: number;
-  type: TransactionType;
-  description: string;
-  createdAt: string;
-};
-
 @Injectable()
 export class WalletService {
-  private readonly balances = new Map<number, number>([[1, 1000]]);
-  private readonly transactions: WalletTransaction[] = [
-    {
-      id: 1,
-      userId: 1,
-      amount: 1000,
-      balanceAfter: 1000,
-      type: 'credit',
-      description: 'Creditos iniciais demo',
-      createdAt: new Date().toISOString(),
-    },
-  ];
+  constructor(private readonly prisma: PrismaService) {}
 
-  getWallet(userId: number) {
-    const balance = this.balances.get(userId);
+  async getWallet(userId: number) {
+    const wallet = await this.prisma.wallet.findUnique({
+      where: { userId },
+    });
 
-    if (balance === undefined) {
+    if (!wallet) {
       throw new NotFoundException('Wallet not found');
     }
 
     return {
       userId,
-      balance,
-      transactions: this.getTransactions(userId),
+      balance: wallet.balance,
+      transactions: await this.getTransactions(userId),
     };
   }
 
-  getBalance(userId: number) {
-    return this.getWallet(userId).balance;
+  async getBalance(userId: number) {
+    return (await this.getWallet(userId)).balance;
   }
 
-  applyTransaction(input: {
+  async applyTransaction(input: {
     userId: number;
     amount: number;
     type: TransactionType;
@@ -55,33 +37,43 @@ export class WalletService {
       throw new BadRequestException('Transaction amount must be valid');
     }
 
-    const currentBalance = this.getBalance(input.userId);
-    const nextBalance = currentBalance + input.amount;
+    return this.prisma.$transaction(async (prisma) => {
+      const wallet = await prisma.wallet.findUnique({
+        where: { userId: input.userId },
+      });
 
-    if (nextBalance < 0) {
-      throw new BadRequestException('Insufficient balance');
-    }
+      if (!wallet) {
+        throw new NotFoundException('Wallet not found');
+      }
 
-    this.balances.set(input.userId, nextBalance);
+      const nextBalance = wallet.balance + input.amount;
 
-    const transaction: WalletTransaction = {
-      id: this.transactions.length + 1,
-      userId: input.userId,
-      amount: input.amount,
-      balanceAfter: nextBalance,
-      type: input.type,
-      description: input.description,
-      createdAt: new Date().toISOString(),
-    };
+      if (nextBalance < 0) {
+        throw new BadRequestException('Insufficient balance');
+      }
 
-    this.transactions.unshift(transaction);
+      await prisma.wallet.update({
+        where: { userId: input.userId },
+        data: { balance: nextBalance },
+      });
 
-    return transaction;
+      return prisma.transaction.create({
+        data: {
+          userId: input.userId,
+          amount: input.amount,
+          balanceAfter: nextBalance,
+          type: input.type,
+          description: input.description,
+        },
+      });
+    });
   }
 
   private getTransactions(userId: number) {
-    return this.transactions
-      .filter((transaction) => transaction.userId === userId)
-      .slice(0, 10);
+    return this.prisma.transaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
   }
 }

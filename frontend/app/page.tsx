@@ -33,6 +33,8 @@ type RoundResult = {
 };
 
 export default function Home() {
+  const [token, setToken] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [stake, setStake] = useState(25);
   const [choice, setChoice] = useState(7);
@@ -42,33 +44,57 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const balance = wallet?.balance ?? 0;
-  const canPlay = !isLoading && !isPlaying && stake > 0 && stake <= balance;
+  const canPlay = Boolean(token) && !isLoading && !isPlaying && stake > 0 && stake <= balance;
   const potentialReturn = useMemo(() => stake * 2, [stake]);
 
-  async function loadWallet() {
+  async function signInDemo() {
+    setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/wallet`);
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "test@test.com", password: "123456" }),
+      });
 
       if (!response.ok) {
-        throw new Error("Nao foi possivel carregar a carteira");
+        throw new Error("Nao foi possivel entrar na demo");
       }
 
-      setWallet(await response.json());
+      const payload = await response.json();
+      setToken(payload.access_token);
+      setUserEmail(payload.user.email);
+      await loadWallet(payload.access_token);
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Erro inesperado ao carregar a carteira",
+          : "Erro inesperado ao entrar na demo",
       );
     } finally {
       setIsLoading(false);
     }
   }
 
+  async function loadWallet(authToken = token) {
+    if (!authToken) return;
+
+    setError(null);
+
+    const response = await fetch(`${API_URL}/wallet`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+
+    if (!response.ok) {
+      throw new Error("Nao foi possivel carregar a carteira");
+    }
+
+    setWallet(await response.json());
+  }
+
   async function playRound() {
-    if (!canPlay) return;
+    if (!canPlay || !token) return;
 
     setIsPlaying(true);
     setError(null);
@@ -76,7 +102,10 @@ export default function Home() {
     try {
       const response = await fetch(`${API_URL}/games/night-dice/play`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ stake, choice }),
       });
 
@@ -101,7 +130,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    void loadWallet();
+    void signInDemo();
   }, []);
 
   return (
@@ -115,7 +144,7 @@ export default function Home() {
             <h1 className="text-2xl font-bold">777 Night</h1>
           </div>
           <div className="rounded-md border border-[#3b4248] bg-[#20252a] px-4 py-2 text-right">
-            <p className="text-xs text-[#9fa7af]">Saldo</p>
+            <p className="text-xs text-[#9fa7af]">{userEmail ?? "Conectando demo"}</p>
             <p className="text-xl font-semibold">
               {isLoading ? "..." : balance.toLocaleString("pt-BR")} VC
             </p>
@@ -137,7 +166,16 @@ export default function Home() {
 
           {error && (
             <div className="mb-5 rounded-md border border-[#7a3028] bg-[#2c1714] p-3 text-sm text-[#ffb2a8]">
-              {error}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>{error}</span>
+                <button
+                  className="rounded-md bg-[#ffb2a8] px-3 py-1 font-semibold text-[#2c1714]"
+                  onClick={signInDemo}
+                  type="button"
+                >
+                  Reconectar
+                </button>
+              </div>
             </div>
           )}
 
@@ -203,7 +241,7 @@ export default function Home() {
             onClick={playRound}
             type="button"
           >
-            {isPlaying ? "Processando..." : "Jogar rodada"}
+            {isPlaying ? "Processando..." : token ? "Jogar rodada" : "Conectando demo"}
           </button>
 
           {lastResult && (
